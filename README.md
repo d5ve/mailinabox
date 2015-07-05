@@ -1,7 +1,7 @@
 CHANGES IN THIS FORK
 ====================
 
-* TODO: Scan larger email sizes - I get spam with large attachments.
+* Scan larger email sizes - I get spam with large attachments. Done as c0a7ea87a53ba70557794e21e2f1ea219bbc4e6a
 * TODO: Turn off v0.11 "Users can no longer spoof arbitrary email addresses in outbound mail" - I want to be able to reply as any email address on my domains.
 
 Mail-in-a-Box
