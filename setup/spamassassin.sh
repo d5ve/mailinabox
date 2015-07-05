@@ -32,7 +32,7 @@ hide_output pyzor discover
 #   is Spamassassin (spamc)'s own default. Specified in KBytes.
 tools/editconf.py /etc/default/spampd \
 	DESTPORT=10026 \
-	ADDOPTS="\"--maxsize=500\""
+	ADDOPTS="\"--maxsize=1500\""
 
 # Spamassassin normally wraps spam as an attachment inside a fresh
 # email with a report about the message. This also protects the user
