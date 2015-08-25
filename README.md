@@ -9,7 +9,7 @@ CHANGES ON THE BOX
 ==================
 
 * Turn off backups (I use tarsnap instead).
-    * ubuntu@mailsrv:~$ sudo sh -c 'echo "target: off" > /home/user-data/backup/custom.yaml'
+    * # Replaced by admin functionality on web interface# ubuntu@mailsrv:~$ sudo sh -c 'echo "target: off" > /home/user-data/backup/custom.yaml'
     * ubuntu@mailsrv:~$ sudo rm -rvf /home/user-data/backup/encrypted/* /home/user-data/backup/cache/*
 
 UPDATING MY FORK
