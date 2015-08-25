@@ -15,7 +15,13 @@ CHANGES ON THE BOX
 UPDATING MY FORK
 ================
 
-    d5ve> cd mailinabox
+    # First setup
+    d5ve> git clone https://github.com/d5ve/mailinabox.git mailinabox/
+    d5ve> cd mailinabox/
+    d5ve> git remote add upstream https://github.com/mail-in-a-box/mailinabox.git
+
+    # Later updates 
+    d5ve> cd mailinabox/
     d5ve> git checkout master
     d5ve> git pull
     d5ve> git fetch upstream
