@@ -3,6 +3,7 @@ CHANGES IN THIS FORK
 
 * Scan larger email sizes - I get spam with large attachments. Done as c0a7ea87a53ba70557794e21e2f1ea219bbc4e6a in setup/spamassassin.sh
 * Turn off v0.11 "Users can no longer spoof arbitrary email addresses in outbound mail" - I want to be able to reply as any email address on my domains. Done as ae3ea515e95e731b8424ba59f511daa69bb10ddd in setup/mail-postfix.sh
+* Comment out owncloud setup step, as it never works for me, and I don't use it anyway. Done as dfd82e807ce4c59996473390fa70c5330979a007 in setup/start.sh
 
 CHANGES ON THE BOX
 ==================
@@ -11,6 +12,30 @@ CHANGES ON THE BOX
     * ubuntu@mailsrv:~$ sudo sh -c 'echo "target: off" > /home/user-data/backup/custom.yaml'
     * ubuntu@mailsrv:~$ sudo rm -rvf /home/user-data/backup/encrypted/* /home/user-data/backup/cache/*
 
+UPDATING MY FORK
+================
+
+    d5ve> cd mailinabox
+    d5ve> git checkout master
+    d5ve> git pull
+    d5ve> git fetch upstream
+    d5ve> git checkout master
+    d5ve> git merge upstream/master
+    d5ve> git push
+
+
+INSTALLING MY FORK
+==================
+
+    # First setup
+    ubuntu@mailsrv:~$ git clone https://github.com/d5ve/mailinabox.git mailinabox/
+    ubuntu@mailsrv:~$ cd mailinabox/
+    ubuntu@mailsrv:~/mailinabox$ sudo setup/start.sh
+
+    # Later updates
+    ubuntu@mailsrv:~$ cd mailinabox/
+    ubuntu@mailsrv:~/mailinabox$ git pull
+    ubuntu@mailsrv:~/mailinabox$ sudo setup/start.sh
 
 Mail-in-a-Box
 =============
