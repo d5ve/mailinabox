@@ -17,8 +17,11 @@ The primary goal of Mail-in-a-Box is to make deploying a good mail server easy, 
 
 On the other hand, we do assume that adversaries are performing passive surveillance and, possibly, active man-in-the-middle attacks. And so:
 
-* User credentials are always sent through SSH/TLS, never in the clear.
-* Outbound mail is sent with the highest level of TLS possible (more on that below).
+* User credentials are always sent through SSH/TLS, never in the clear, with modern TLS settings.
+* Outbound mail is sent with the highest level of TLS possible.
+* The box advertises its support for [DANE TLSA](https://en.wikipedia.org/wiki/DNS-based_Authentication_of_Named_Entities), when DNSSEC is enabled at the domain name registrar, so that inbound mail is more likely to be transmitted securely.
+
+Additional details follow.
 
 User Credentials
 ----------------
@@ -89,7 +92,9 @@ Domain policy records allow recipient MTAs to detect when the _domain_ part of o
 
 ### User Policy
 
-While domain policy records prevent other servers from sending mail with a "From:" header that matches a domain hosted on the box (see above), those policy records do not guarnatee that the user portion of the sender email address matches the actual sender. In enterprise environments where the box may host the mail of untrusted users, it is important to guard against users impersonating other users. The box restricts the envelope sender address that users may put into outbound mail to either a) their own email address (their SMTP login username) or b) any alias that they are listed as a direct recipient of. Note that the envelope sender address is not the same as the "From:" header.
+While domain policy records prevent other servers from sending mail with a "From:" header that matches a domain hosted on the box (see above), those policy records do not guarnatee that the user portion of the sender email address matches the actual sender. In enterprise environments where the box may host the mail of untrusted users, it is important to guard against users impersonating other users.
+
+The box restricts the envelope sender address (also called the return path or MAIL FROM address --- this is different from the "From:" header) that users may put into outbound mail. The envelope sender address must be either their own email address (their SMTP login username) or any alias that they are listed as a permitted sender of. (There is currently no restriction on the contents of the "From:" header.)
 
 Incoming Mail
 -------------

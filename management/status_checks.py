@@ -33,7 +33,7 @@ def run_checks(rounded_values, env, output, pool):
 	# (ignore errors; if bind9/rndc isn't running we'd already report
 	# that in run_services checks.)
 	shell('check_call', ["/usr/sbin/rndc", "flush"], trap=True)
-	
+
 	run_system_checks(rounded_values, env, output)
 
 	# perform other checks asynchronously
@@ -264,10 +264,10 @@ def run_domain_checks_on_domain(domain, rounded_time, env, dns_domains, dns_zone
 
 	if domain == env["PRIMARY_HOSTNAME"]:
 		check_primary_hostname_dns(domain, env, output, dns_domains, dns_zonefiles)
-		
+
 	if domain in dns_domains:
 		check_dns_zone(domain, env, output, dns_zonefiles)
-		
+
 	if domain in mail_domains:
 		check_mail_domain(domain, env, output)
 
@@ -351,11 +351,14 @@ def check_primary_hostname_dns(domain, env, output, dns_domains, dns_zonefiles):
 	check_alias_exists("Hostmaster contact address", "hostmaster@" + domain, env, output)
 
 def check_alias_exists(alias_name, alias, env, output):
-	mail_alises = dict(get_mail_aliases(env))
-	if alias in mail_alises:
-		output.print_ok("%s exists as a mail alias. [%s ↦ %s]" % (alias_name, alias, mail_alises[alias]))
+	mail_aliases = dict([(address, receivers) for address, receivers, *_ in get_mail_aliases(env)])
+	if alias in mail_aliases:
+		if mail_aliases[alias]:
+			output.print_ok("%s exists as a mail alias. [%s ↦ %s]" % (alias_name, alias, mail_aliases[alias]))
+		else:
+			output.print_error("""You must set the destination of the mail alias for %s to direct email to you or another administrator.""" % alias)
 	else:
-		output.print_error("""You must add a mail alias for %s and direct email to you or another administrator.""" % alias)
+		output.print_error("""You must add a mail alias for %s which directs email to you or another administrator.""" % alias)
 
 def check_dns_zone(domain, env, output, dns_zonefiles):
 	# If a DS record is set at the registrar, check DNSSEC first because it will affect the NS query.
@@ -370,12 +373,9 @@ def check_dns_zone(domain, env, output, dns_zonefiles):
 	# the TLD, and so we're not actually checking the TLD. For that we'd need
 	# to do a DNS trace.
 	ip = query_dns(domain, "A")
-	secondary_ns = get_secondary_dns(get_custom_dns_config(env)) or "ns2." + env['PRIMARY_HOSTNAME']
+	secondary_ns = get_secondary_dns(get_custom_dns_config(env), mode="NS") or ["ns2." + env['PRIMARY_HOSTNAME']]
 	existing_ns = query_dns(domain, "NS")
-	correct_ns = "; ".join(sorted([
-		"ns1." + env['PRIMARY_HOSTNAME'],
-		secondary_ns,
-		]))
+	correct_ns = "; ".join(sorted(["ns1." + env['PRIMARY_HOSTNAME']] + secondary_ns))
 	if existing_ns.lower() == correct_ns.lower():
 		output.print_ok("Nameservers are set correctly at registrar. [%s]" % correct_ns)
 	elif ip == env['PUBLIC_IP']:
@@ -495,7 +495,7 @@ def check_mail_domain(domain, env, output):
 
 	# Check that the postmaster@ email address exists. Not required if the domain has a
 	# catch-all address or domain alias.
-	if "@" + domain not in dict(get_mail_aliases(env)):
+	if "@" + domain not in [address for address, *_ in get_mail_aliases(env)]:
 		check_alias_exists("Postmaster contact address", "postmaster@" + domain, env, output)
 
 	# Stop if the domain is listed in the Spamhaus Domain Block List.
@@ -647,7 +647,7 @@ def check_certificate(domain, ssl_certificate, ssl_private_key, warn_if_expiring
 				return "*." + idna.encode(dns_name[2:]).decode('ascii')
 			else:
 				return idna.encode(dns_name).decode('ascii')
-				
+
 		try:
 			sans = cert.extensions.get_extension_for_oid(OID_SUBJECT_ALTERNATIVE_NAME).value.get_values_for_type(DNSName)
 			for san in sans:
@@ -708,7 +708,7 @@ def check_certificate(domain, ssl_certificate, ssl_private_key, warn_if_expiring
 		"openssl",
 		"verify", "-verbose",
 		"-purpose", "sslserver", "-policy_check",]
-		+ ([] if len(ssl_cert_chain) == 1 else ["-untrusted", "/dev/stdin"])
+		+ ([] if len(ssl_cert_chain) == 1 else ["-untrusted", "/proc/self/fd/0"])
 		+ [ssl_certificate],
 		input=b"\n\n".join(ssl_cert_chain[1:]),
 		trap=True)
@@ -749,7 +749,7 @@ def check_certificate(domain, ssl_certificate, ssl_private_key, warn_if_expiring
 def load_cert_chain(pemfile):
 	# A certificate .pem file may contain a chain of certificates.
 	# Load the file and split them apart.
-	re_pem = rb"(-+BEGIN (?:.+)-+[\r\n](?:[A-Za-z0-9+/=]{1,64}[\r\n])+-+END (?:.+)-+[\r\n])"
+	re_pem = rb"(-+BEGIN (?:.+)-+[\r\n]+(?:[A-Za-z0-9+/=]{1,64}[\r\n]+)+-+END (?:.+)-+[\r\n]+)"
 	with open(pemfile, "rb") as f:
 		pem = f.read() + b"\n" # ensure trailing newline
 		pemblocks = re.findall(re_pem, pem)
@@ -763,7 +763,7 @@ def load_pem(pem):
 	from cryptography.x509 import load_pem_x509_certificate
 	from cryptography.hazmat.primitives import serialization
 	from cryptography.hazmat.backends import default_backend
-	pem_type = re.match(b"-+BEGIN (.*?)-+\n", pem)
+	pem_type = re.match(b"-+BEGIN (.*?)-+[\r\n]", pem)
 	if pem_type is None:
 		raise ValueError("File is not a valid PEM-formatted file.")
 	pem_type = pem_type.group(1)
@@ -887,7 +887,7 @@ def run_and_output_changes(env, pool, send_via_email):
 			if category not in cur_status:
 				out.add_heading(category)
 				out.print_warning("This section was removed.")
-	
+
 	if send_via_email:
 		# If there were changes, send off an email.
 		buf = out.buf.getvalue()
@@ -899,7 +899,7 @@ def run_and_output_changes(env, pool, send_via_email):
 			msg['To'] = "administrator@%s" % env['PRIMARY_HOSTNAME']
 			msg['Subject'] = "[%s] Status Checks Change Notice" % env['PRIMARY_HOSTNAME']
 			msg.set_payload(buf, "UTF-8")
-	
+
 			# send to administrator@
 			import smtplib
 			mailserver = smtplib.SMTP('localhost', 25)
@@ -909,7 +909,7 @@ def run_and_output_changes(env, pool, send_via_email):
 				"administrator@%s" % env['PRIMARY_HOSTNAME'], # RCPT TO
 				msg.as_string())
 			mailserver.quit()
-		
+
 	# Store the current status checks output for next time.
 	os.makedirs(os.path.dirname(cache_fn), exist_ok=True)
 	with open(cache_fn, "w") as f:

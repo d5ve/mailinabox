@@ -49,6 +49,7 @@ source /etc/mailinabox.conf # load global vars
 # > infrastructure and every commercial vendor of dnswl.org data (eg through
 # > anti-spam solutions) must register with dnswl.org and purchase a subscription.
 
+echo "Installing Postfix (SMTP server)..."
 apt_install postfix postfix-pcre postgrey ca-certificates
 
 # ### Basic Settings
@@ -92,6 +93,12 @@ tools/editconf.py /etc/postfix/master.cf -s -w \
 
 # Install the `outgoing_mail_header_filters` file required by the new 'authclean' service.
 cp conf/postfix_outgoing_mail_header_filters /etc/postfix/outgoing_mail_header_filters
+
+# Modify the `outgoing_mail_header_filters` file to use the local machine name and ip 
+# on the first received header line.  This may help reduce the spam score of email by
+# removing the 127.0.0.1 reference.
+sed -i "s/PRIMARY_HOSTNAME/$PRIMARY_HOSTNAME/" /etc/postfix/outgoing_mail_header_filters
+sed -i "s/PUBLIC_IP/$PUBLIC_IP/" /etc/postfix/outgoing_mail_header_filters
 
 # Enable TLS on these and all other connections (i.e. ports 25 *and* 587) and
 # require TLS before a user is allowed to authenticate. This also makes
