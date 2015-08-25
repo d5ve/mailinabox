@@ -1,8 +1,16 @@
 CHANGES IN THIS FORK
 ====================
 
-* Scan larger email sizes - I get spam with large attachments. Done as c0a7ea87a53ba70557794e21e2f1ea219bbc4e6a
-* Turn off v0.11 "Users can no longer spoof arbitrary email addresses in outbound mail" - I want to be able to reply as any email address on my domains. Done as ae3ea515e95e731b8424ba59f511daa69bb10ddd
+* Scan larger email sizes - I get spam with large attachments. Done as c0a7ea87a53ba70557794e21e2f1ea219bbc4e6a in setup/spamassassin.sh
+* Turn off v0.11 "Users can no longer spoof arbitrary email addresses in outbound mail" - I want to be able to reply as any email address on my domains. Done as ae3ea515e95e731b8424ba59f511daa69bb10ddd in setup/mail-postfix.sh
+
+CHANGES ON THE BOX
+==================
+
+* Turn off backups (I use tarsnap instead).
+    * ubuntu@mailsrv:~$ sudo sh -c 'echo "target: off" > /home/user-data/backup/custom.yaml'
+    * ubuntu@mailsrv:~$ sudo rm -rvf /home/user-data/backup/encrypted/* /home/user-data/backup/cache/*
+
 
 Mail-in-a-Box
 =============
