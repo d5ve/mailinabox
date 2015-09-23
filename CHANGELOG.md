@@ -1,6 +1,38 @@
 CHANGELOG
 =========
 
+In Development
+--------------
+
+Mail:
+
+* Spamassassin's network-based tests (Pyzor, others) and DKIM tests are now enabled. (Pyzor had always been installed but was not active due to a misconfiguration.)
+* Moving spam out of the Spam folder and into Trash would incorrectly train Spamassassin that those messages were not spam.
+
+Calender/Contacts:
+
+* CalDAV/CardDAV and Exchange/ActiveSync for calendar/contacts wasn't working in some network configurations.
+
+Web:
+
+* If a custom DNS record is set on a domain or 'www'+domain, web would not be served for that domain. If the custom DNS record is just the box's IP address, that's a configuration mistake, but allow it and let web continue to be served.
+* Accommodate really long domain names by increasing an nginx setting.
+
+Control panel:
+
+* Added an option to check for new Mail-in-a-Box versions within status checks. It is off by default so that boxes don't "phone home" without permission.
+* Added a random password generator on the users page to simplify creating new accounts.
+* When S3 backup credentials are set, the credentials are now no longer ever sent back from the box to the client, for better security.
+* Fixed the jumpiness when a modal is displayed.
+* Focus is put into the login form fields when the login form is displayed.
+* Status checks now include a warning if a custom DNS record has been set on a domain that would normally serve web and as a result that domain no longer is serving web.
+* Some errors in the control panel when there is invalid data in the database or an improperly named archived user account have been suppressed.
+
+v0.13b (August 30, 2015)
+------------------------
+
+Another ownCloud 8.1.1 issue was found. New installations left ownCloud improperly setup ("You are accessing the server from an untrusted domain."). Upgrading to this version will fix that.
+
 v0.13a (August 23, 2015)
 ------------------------
 

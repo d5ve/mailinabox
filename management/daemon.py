@@ -318,9 +318,9 @@ def dns_get_dump():
 @app.route('/ssl/csr/<domain>', methods=['POST'])
 @authorized_personnel_only
 def ssl_get_csr(domain):
-	from web_update import get_domain_ssl_files, create_csr
-	ssl_key, ssl_certificate, ssl_via = get_domain_ssl_files(domain, env)
-	return create_csr(domain, ssl_key, env)
+	from web_update import create_csr
+	ssl_private_key = os.path.join(os.path.join(env["STORAGE_ROOT"], 'ssl', 'ssl_private_key.pem'))
+	return create_csr(domain, ssl_private_key, env)
 
 @app.route('/ssl/install', methods=['POST'])
 @authorized_personnel_only
@@ -413,7 +413,7 @@ def backup_status():
 @authorized_personnel_only
 def backup_get_custom():
 	from backup import get_backup_config
-	return json_response(get_backup_config(env))
+	return json_response(get_backup_config(env, for_ui=True))
 
 @app.route('/system/backup/config', methods=["POST"])
 @authorized_personnel_only
@@ -425,6 +425,20 @@ def backup_set_custom():
 		request.form.get('target_pass', ''),
 		request.form.get('min_age', '')
 	))
+
+@app.route('/system/privacy', methods=["GET"])
+@authorized_personnel_only
+def privacy_status_get():
+	config = utils.load_settings(env)
+	return json_response(config.get("privacy", True))
+
+@app.route('/system/privacy', methods=["POST"])
+@authorized_personnel_only
+def privacy_status_set():
+	config = utils.load_settings(env)
+	config["privacy"] = (request.form.get('value') == "private")
+	utils.write_settings(config, env)
+	return "OK"
 
 # MUNIN
 

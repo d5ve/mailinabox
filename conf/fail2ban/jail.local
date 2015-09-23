@@ -2,6 +2,10 @@
 
 # JAILS
 
+[ssh]
+maxretry = 7
+bantime = 3600
+
 [ssh-ddos]
 enabled  = true
 
