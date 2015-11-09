@@ -1,13 +1,23 @@
 CHANGELOG
 =========
 
-In Development
---------------
+Still In Development
+--------------------
+
+Mail:
+
+* Update Roundcube to version 1.1.3.
+
+v0.14 (November 4, 2015)
+------------------------
 
 Mail:
 
 * Spamassassin's network-based tests (Pyzor, others) and DKIM tests are now enabled. (Pyzor had always been installed but was not active due to a misconfiguration.)
 * Moving spam out of the Spam folder and into Trash would incorrectly train Spamassassin that those messages were not spam.
+* Automatically create the Sent and Archive folders for new users.
+* The HTML5_Notifier plugin for Roundcube is now included, which when turned on in Roundcube settings provides desktop notifications for new mail.
+* The Exchange/ActiveSync backend Z-Push has been updated to fix a problem with CC'd emails not being sent to the CC recipients.
 
 Calender/Contacts:
 
@@ -15,6 +25,7 @@ Calender/Contacts:
 
 Web:
 
+* When a new domain is added to the box, rather than applying a new self-signed certificate for that domain, the SSL certificate for the box's primary hostname will be used instead.
 * If a custom DNS record is set on a domain or 'www'+domain, web would not be served for that domain. If the custom DNS record is just the box's IP address, that's a configuration mistake, but allow it and let web continue to be served.
 * Accommodate really long domain names by increasing an nginx setting.
 
@@ -26,7 +37,14 @@ Control panel:
 * Fixed the jumpiness when a modal is displayed.
 * Focus is put into the login form fields when the login form is displayed.
 * Status checks now include a warning if a custom DNS record has been set on a domain that would normally serve web and as a result that domain no longer is serving web.
+* Status checks now check that secondary nameservers, if specified, are actually serving the domains.
 * Some errors in the control panel when there is invalid data in the database or an improperly named archived user account have been suppressed.
+* Added subresource integrity attributes to all remotely-sourced resources (i.e. via CDNs) to guard against CDNs being used as an attack vector.
+
+System:
+
+* Tweaks to fail2ban settings.
+* Fixed a spurrious warning while installing munin.
 
 v0.13b (August 30, 2015)
 ------------------------
