@@ -51,35 +51,19 @@ def get_dns_zones(env):
 	return zonefiles
 
 def do_dns_update(env, force=False):
-	# What domains (and their zone filenames) should we build?
-	domains = get_dns_domains(env)
-	zonefiles = get_dns_zones(env)
-
-	# Custom records to add to zones.
-	additional_records = list(get_custom_dns_config(env))
-	from web_update import get_default_www_redirects
-	www_redirect_domains = get_default_www_redirects(env)
-
 	# Write zone files.
 	os.makedirs('/etc/nsd/zones', exist_ok=True)
+	zonefiles = []
 	updated_domains = []
-	for i, (domain, zonefile) in enumerate(zonefiles):
-		# Build the records to put in the zone.
-		records = build_zone(domain, domains, additional_records, www_redirect_domains, env)
+	for (domain, zonefile, records) in build_zones(env):
+		# The final set of files will be signed.
+		zonefiles.append((domain, zonefile + ".signed"))
 
 		# See if the zone has changed, and if so update the serial number
 		# and write the zone file.
 		if not write_nsd_zone(domain, "/etc/nsd/zones/" + zonefile, records, env, force):
 			# Zone was not updated. There were no changes.
 			continue
-
-		# If this is a .justtesting.email domain, then post the update.
-		try:
-			justtestingdotemail(domain, records)
-		except:
-			# Hmm. Might be a network issue. If we stop now, will we end
-			# up in an inconsistent state? Let's just continue.
-			pass
 
 		# Mark that we just updated this domain.
 		updated_domains.append(domain)
@@ -95,14 +79,8 @@ def do_dns_update(env, force=False):
 		# and return True so we get a chance to re-sign it.
 		sign_zone(domain, zonefile, env)
 
-	# Now that all zones are signed (some might not have changed and so didn't
-	# just get signed now, but were before) update the zone filename so nsd.conf
-	# uses the signed file.
-	for i in range(len(zonefiles)):
-		zonefiles[i][1] += ".signed"
-
 	# Write the main nsd.conf file.
-	if write_nsd_conf(zonefiles, additional_records, env):
+	if write_nsd_conf(zonefiles, list(get_custom_dns_config(env)), env):
 		# Make sure updated_domains contains *something* if we wrote an updated
 		# nsd.conf so that we know to restart nsd.
 		if len(updated_domains) == 0:
@@ -112,8 +90,8 @@ def do_dns_update(env, force=False):
 	if len(updated_domains) > 0:
 		shell('check_call', ["/usr/sbin/service", "nsd", "restart"])
 
-	# Write the OpenDKIM configuration tables.
-	if write_opendkim_tables(domains, env):
+	# Write the OpenDKIM configuration tables for all of the domains.
+	if write_opendkim_tables([domain for domain, zonefile in zonefiles], env):
 		# Settings changed. Kick opendkim.
 		shell('check_call', ["/usr/sbin/service", "opendkim", "restart"])
 		if len(updated_domains) == 0:
@@ -131,6 +109,22 @@ def do_dns_update(env, force=False):
 		return "updated DNS: " + ",".join(updated_domains) + "\n"
 
 ########################################################################
+
+def build_zones(env):
+	# What domains (and their zone filenames) should we build?
+	domains = get_dns_domains(env)
+	zonefiles = get_dns_zones(env)
+
+	# Custom records to add to zones.
+	additional_records = list(get_custom_dns_config(env))
+	from web_update import get_web_domains
+	www_redirect_domains = set(get_web_domains(env)) - set(get_web_domains(env, include_www_redirects=False))
+
+	# Build DNS records for each zone.
+	for domain, zonefile in zonefiles:
+		# Build the records to put in the zone.
+		records = build_zone(domain, domains, additional_records, www_redirect_domains, env)
+		yield (domain, zonefile, records)
 
 def build_zone(domain, all_domains, additional_records, www_redirect_domains, env, is_zone=True):
 	records = []
@@ -289,26 +283,40 @@ def build_zone(domain, all_domains, additional_records, www_redirect_domains, en
 
 def build_tlsa_record(env):
 	# A DANE TLSA record in DNS specifies that connections on a port
-	# must use TLS and the certificate must match a particular certificate.
+	# must use TLS and the certificate must match a particular criteria.
 	#
 	# Thanks to http://blog.huque.com/2012/10/dnssec-and-certificates.html
-	# for explaining all of this!
+	# and https://community.letsencrypt.org/t/please-avoid-3-0-1-and-3-0-2-dane-tlsa-records-with-le-certificates/7022
+	# for explaining all of this! Also see https://tools.ietf.org/html/rfc6698#section-2.1
+	# and https://github.com/mail-in-a-box/mailinabox/issues/268#issuecomment-167160243.
+	#
+	# There are several criteria. We used to use "3 0 1" criteria, which
+	# meant to pin a leaf (3) certificate (0) with SHA256 hash (1). But
+	# certificates change, and especially as we move to short-lived certs
+	# they change often. The TLSA record handily supports the criteria of
+	# a leaf certificate (3)'s subject public key (1) with SHA256 hash (1).
+	# The subject public key is the public key portion of the private key
+	# that generated the CSR that generated the certificate. Since we
+	# generate a private key once the first time Mail-in-a-Box is set up
+	# and reuse it for all subsequent certificates, the TLSA record will
+	# remain valid indefinitely.
 
-	# Get the hex SHA256 of the DER-encoded server certificate:
-	certder = shell("check_output", [
-		"/usr/bin/openssl",
-		"x509",
-		"-in", os.path.join(env["STORAGE_ROOT"], "ssl", "ssl_certificate.pem"),
-		"-outform", "DER"
-		],
-		return_bytes=True)
-	certhash = hashlib.sha256(certder).hexdigest()
+	from ssl_certificates import load_cert_chain, load_pem
+	from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+	fn = os.path.join(env["STORAGE_ROOT"], "ssl", "ssl_certificate.pem")
+	cert = load_pem(load_cert_chain(fn)[0])
+
+	subject_public_key = cert.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
+	# We could have also loaded ssl_private_key.pem and called priv_key.public_key().public_bytes(...)
+
+	pk_hash = hashlib.sha256(subject_public_key).hexdigest()
 
 	# Specify the TLSA parameters:
-	# 3: This is the certificate that the client should trust. No CA is needed.
-	# 0: The whole certificate is matched.
-	# 1: The certificate is SHA256'd here.
-	return "3 0 1 " + certhash
+	# 3: Match the (leaf) certificate. (No CA, no trust path needed.)
+	# 1: Match its subject public key.
+	# 1: Use SHA256.
+	return "3 1 1 " + pk_hash
 
 def build_sshfp_records():
 	# The SSHFP record is a way for us to embed this server's SSH public
@@ -794,6 +802,7 @@ def set_custom_dns_record(qname, rtype, value, action, env):
 
 def get_secondary_dns(custom_dns, mode=None):
 	resolver = dns.resolver.get_default_resolver()
+	resolver.timeout = 10
 
 	values = []
 	for qname, rtype, value in custom_dns:
@@ -826,11 +835,12 @@ def set_secondary_dns(hostnames, env):
 	if len(hostnames) > 0:
 		# Validate that all hostnames are valid and that all zone-xfer IP addresses are valid.
 		resolver = dns.resolver.get_default_resolver()
+		resolver.timeout = 5
 		for item in hostnames:
 			if not item.startswith("xfr:"):
 				# Resolve hostname.
 				try:
-					response = dns.resolver.query(item, "A")
+					response = resolver.query(item, "A")
 				except (dns.resolver.NoNameservers, dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
 					raise ValueError("Could not resolve the IP address of %s." % item)
 			else:
@@ -859,57 +869,9 @@ def get_custom_dns_record(custom_dns, qname, rtype):
 
 ########################################################################
 
-def justtestingdotemail(domain, records):
-	# If the domain is a subdomain of justtesting.email, which we own,
-	# automatically populate the zone where it is set up on dns4e.com.
-	# Ideally if dns4e.com supported NS records we would just have it
-	# delegate DNS to us, but instead we will populate the whole zone.
-
-	import subprocess, json, urllib.parse
-
-	if not domain.endswith(".justtesting.email"):
-		return
-
-	for subdomain, querytype, value, explanation in records:
-		if querytype in ("NS",): continue
-		if subdomain in ("www", "ns1", "ns2"): continue # don't do unnecessary things
-
-		if subdomain == None:
-			subdomain = domain
-		else:
-			subdomain = subdomain + "." + domain
-
-		if querytype == "TXT":
-			# nsd requires parentheses around txt records with multiple parts,
-			# but DNS4E requires there be no parentheses; also it goes into
-			# nsd with a newline and a tab, which we replace with a space here
-			value = re.sub("^\s*\(\s*([\w\W]*)\)", r"\1", value)
-			value = re.sub("\s+", " ", value)
-		else:
-			continue
-
-		print("Updating DNS for %s/%s..." % (subdomain, querytype))
-		resp = json.loads(subprocess.check_output([
-			"curl",
-			"-s",
-			"https://api.dns4e.com/v7/%s/%s" % (urllib.parse.quote(subdomain), querytype.lower()),
-			"--user", "2ddbd8e88ed1495fa0ec:A97TDJV26CVUJS6hqAs0CKnhj4HvjTM7MwAAg8xb",
-			"--data", "record=%s" % urllib.parse.quote(value),
-			]).decode("utf8"))
-		print("\t...", resp.get("message", "?"))
-
-########################################################################
-
 def build_recommended_dns(env):
 	ret = []
-	domains = get_dns_domains(env)
-	zonefiles = get_dns_zones(env)
-	additional_records = list(get_custom_dns_config(env))
-	from web_update import get_default_www_redirects
-	www_redirect_domains = get_default_www_redirects(env)
-	for domain, zonefile in zonefiles:
-		records = build_zone(domain, domains, additional_records, www_redirect_domains, env)
-
+	for (domain, zonefile, records) in build_zones(env):
 		# remove records that we don't dislay
 		records = [r for r in records if r[3] is not False]
 

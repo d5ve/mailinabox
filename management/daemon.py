@@ -28,6 +28,14 @@ try:
 except OSError:
 	pass
 
+# for generating CSRs we need a list of country codes
+csr_country_codes = []
+with open(os.path.join(os.path.dirname(me), "csr_country_codes.tsv")) as f:
+	for line in f:
+		if line.strip() == "" or line.startswith("#"): continue
+		code, name = line.strip().split("\t")[0:2]
+		csr_country_codes.append((code, name))
+
 app = Flask(__name__, template_folder=os.path.abspath(os.path.join(os.path.dirname(me), "templates")))
 
 # Decorator to protect views that require a user with 'admin' privileges.
@@ -94,15 +102,19 @@ def index():
 	no_users_exist = (len(get_mail_users(env)) == 0)
 	no_admins_exist = (len(get_admins(env)) == 0)
 
+	utils.fix_boto() # must call prior to importing boto
 	import boto.s3
 	backup_s3_hosts = [(r.name, r.endpoint) for r in boto.s3.regions()]
 
 	return render_template('index.html',
 		hostname=env['PRIMARY_HOSTNAME'],
 		storage_root=env['STORAGE_ROOT'],
+
 		no_users_exist=no_users_exist,
 		no_admins_exist=no_admins_exist,
+
 		backup_s3_hosts=backup_s3_hosts,
+		csr_country_codes=csr_country_codes,
 	)
 
 @app.route('/me')
@@ -318,17 +330,20 @@ def dns_get_dump():
 @app.route('/ssl/csr/<domain>', methods=['POST'])
 @authorized_personnel_only
 def ssl_get_csr(domain):
-	from web_update import create_csr
+	from ssl_certificates import create_csr
 	ssl_private_key = os.path.join(os.path.join(env["STORAGE_ROOT"], 'ssl', 'ssl_private_key.pem'))
-	return create_csr(domain, ssl_private_key, env)
+	return create_csr(domain, ssl_private_key, request.form.get('countrycode', ''), env)
 
 @app.route('/ssl/install', methods=['POST'])
 @authorized_personnel_only
 def ssl_install_cert():
-	from web_update import install_cert
+	from web_update import get_web_domains
+	from ssl_certificates import install_cert
 	domain = request.form.get('domain')
 	ssl_cert = request.form.get('cert')
 	ssl_chain = request.form.get('chain')
+	if domain not in get_web_domains(env):
+		return "Invalid domain name."
 	return install_cert(domain, ssl_cert, ssl_chain, env)
 
 # WEB

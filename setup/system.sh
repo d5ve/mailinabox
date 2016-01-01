@@ -1,3 +1,4 @@
+source /etc/mailinabox.conf
 source setup/functions.sh # load our functions
 
 # Basic System Configuration
@@ -11,12 +12,9 @@ source setup/functions.sh # load our functions
 # text search plugin for (and by) dovecot, which is not available in
 # Ubuntu currently.
 #
-# Add that to the system's list of repositories using add-apt-repository.
-# But add-apt-repository may not be installed. If it's not available,
-# then install it. But we have to run apt-get update before we try to
-# install anything so the package index is up to date. After adding the
-# PPA, we have to run apt-get update *again* to load the PPA's index,
-# so this must precede the apt-get update line below.
+# So, first ensure add-apt-repository is installed, then use it to install
+# the [mail-in-a-box ppa](https://launchpad.net/~mail-in-a-box/+archive/ubuntu/ppa).
+
 
 if [ ! -f /usr/bin/add-apt-repository ]; then
 	echo "Installing add-apt-repository..."
@@ -54,8 +52,100 @@ apt_get_quiet upgrade
 echo Installing system packages...
 apt_install python3 python3-dev python3-pip \
 	netcat-openbsd wget curl git sudo coreutils bc \
-	haveged unattended-upgrades cron ntp fail2ban
+	haveged pollinate \
+	unattended-upgrades cron ntp fail2ban
 
+# ### Set the system timezone
+#
+# Some systems are missing /etc/timezone, which we cat into the configs for
+# Z-Push and ownCloud, so we need to set it to something. Daily cron tasks
+# like the system backup are run at a time tied to the system timezone, so
+# letting the user choose will help us identify the right time to do those
+# things (i.e. late at night in whatever timezone the user actually lives
+# in).
+#
+# However, changing the timezone once it is set seems to confuse fail2ban
+# and requires restarting fail2ban (done below in the fail2ban
+# section) and syslog (see #328). There might be other issues, and it's
+# not likely the user will want to change this, so we only ask on first
+# setup.
+if [ -z "$NONINTERACTIVE" ]; then
+	if [ ! -f /etc/timezone ] || [ ! -z $FIRST_TIME_SETUP ]; then
+		# If the file is missing or this is the user's first time running
+		# Mail-in-a-Box setup, run the interactive timezone configuration
+		# tool.
+		dpkg-reconfigure tzdata
+		restart_service rsyslog
+	fi
+else
+	# This is a non-interactive setup so we can't ask the user.
+	# If /etc/timezone is missing, set it to UTC.
+	if [ ! -f /etc/timezone ]; then
+		echo "Setting timezone to UTC."
+		echo "Etc/UTC" > /etc/timezone
+		restart_service rsyslog
+	fi
+fi
+
+# ### Seed /dev/urandom
+#
+# /dev/urandom is used by various components for generating random bytes for
+# encryption keys and passwords:
+#
+# * TLS private key (see `ssl.sh`, which calls `openssl genrsa`)
+# * DNSSEC signing keys (see `dns.sh`)
+# * our management server's API key (via Python's os.urandom method)
+# * Roundcube's SECRET_KEY (`webmail.sh`)
+# * ownCloud's administrator account password (`owncloud.sh`)
+#
+# Why /dev/urandom? It's the same as /dev/random, except that it doesn't wait
+# for a constant new stream of entropy. In practice, we only need a little
+# entropy at the start to get going. After that, we can safely pull a random
+# stream from /dev/urandom and not worry about how much entropy has been
+# added to the stream. (http://www.2uo.de/myths-about-urandom/) So we need
+# to worry about /dev/urandom being seeded properly (which is also an issue
+# for /dev/random), but after that /dev/urandom is superior to /dev/random
+# because it's faster and doesn't block indefinitely to wait for hardware
+# entropy. Note that `openssl genrsa` even uses `/dev/urandom`, and if it's
+# good enough for generating an RSA private key, it's good enough for anything
+# else we may need.
+#
+# Now about that seeding issue....
+#
+# /dev/urandom is seeded from "the uninitialized contents of the pool buffers when
+# the kernel starts, the startup clock time in nanosecond resolution,...and
+# entropy saved across boots to a local file" as well as the order of
+# execution of concurrent accesses to /dev/urandom. (Heninger et al 2012,
+# https://factorable.net/weakkeys12.conference.pdf) But when memory is zeroed,
+# the system clock is reset on boot, /etc/init.d/urandom has not yet run, or
+# the machine is single CPU or has no concurrent accesses to /dev/urandom prior
+# to this point, /dev/urandom may not be seeded well. After this, /dev/urandom
+# draws from the same entropy sources as /dev/random, but it doesn't block or
+# issue any warnings if no entropy is actually available. (http://www.2uo.de/myths-about-urandom/)
+# Entropy might not be readily available because this machine has no user input
+# devices (common on servers!) and either no hard disk or not enough IO has
+# ocurred yet --- although haveged tries to mitigate this. So there's a good chance
+# that accessing /dev/urandom will not be drawing from any hardware entropy and under
+# a perfect-storm circumstance where the other seeds are meaningless, /dev/urandom
+# may not be seeded at all.
+#
+# The first thing we'll do is block until we can seed /dev/urandom with enough
+# hardware entropy to get going, by drawing from /dev/random. haveged makes this
+# less likely to stall for very long.
+
+echo Initializing system random number generator...
+dd if=/dev/random of=/dev/urandom bs=1 count=32 2> /dev/null
+
+# This is supposedly sufficient. But because we're not sure if hardware entropy
+# is really any good on virtualized systems, we'll also seed from Ubuntu's
+# pollinate servers:
+
+pollinate  -q -r
+
+# Between these two, we really ought to be all set.
+
+# ### Package maintenance
+#
 # Allow apt to install system updates automatically every day.
 
 cat > /etc/apt/apt.conf.d/02periodic <<EOF;
@@ -138,7 +228,9 @@ restart_service resolvconf
 # ### Fail2Ban Service
 
 # Configure the Fail2Ban installation to prevent dumb bruce-force attacks against dovecot, postfix and ssh
-cp conf/fail2ban/jail.local /etc/fail2ban/jail.local
+cat conf/fail2ban/jail.local \
+	| sed "s/PUBLIC_IP/$PUBLIC_IP/g" \
+	> /etc/fail2ban/jail.local
 cp conf/fail2ban/dovecotimap.conf /etc/fail2ban/filter.d/dovecotimap.conf
 
 restart_service fail2ban

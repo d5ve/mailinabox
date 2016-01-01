@@ -27,7 +27,7 @@ needs_update=0 #NODOC
 if [ ! -f /usr/local/lib/z-push/version ]; then
 	needs_update=1 #NODOC
 elif [[ $TARGETHASH != `cat /usr/local/lib/z-push/version` ]]; then
-	# checks if the version 
+	# checks if the version
 	needs_update=1 #NODOC
 fi
 if [ $needs_update == 1 ]; then
@@ -44,6 +44,7 @@ sed -i "s/define('BACKEND_PROVIDER', .*/define('BACKEND_PROVIDER', 'BackendCombi
 sed -i "s/define('USE_FULLEMAIL_FOR_LOGIN', .*/define('USE_FULLEMAIL_FOR_LOGIN', true);/" /usr/local/lib/z-push/config.php
 sed -i "s/define('LOG_MEMORY_PROFILER', .*/define('LOG_MEMORY_PROFILER', false);/" /usr/local/lib/z-push/config.php
 sed -i "s/define('BUG68532FIXED', .*/define('BUG68532FIXED', false);/" /usr/local/lib/z-push/config.php
+sed -i "s/define('LOGLEVEL', .*/define('LOGLEVEL', LOGLEVEL_ERROR);/" /usr/local/lib/z-push/config.php
 
 # Configure BACKEND
 rm -f /usr/local/lib/z-push/backend/combined/config.php
@@ -74,6 +75,19 @@ chmod 750 /var/log/z-push
 chmod 750 /var/lib/z-push
 chown www-data:www-data /var/log/z-push
 chown www-data:www-data /var/lib/z-push
+
+# Add log rotation
+
+cat > /etc/logrotate.d/z-push <<EOF;
+/var/log/z-push/*.log {
+	weekly
+	missingok
+	rotate 52
+	compress
+	delaycompress
+	notifempty
+}
+EOF
 
 # Restart service.
 

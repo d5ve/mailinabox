@@ -4,13 +4,14 @@ source setup/functions.sh
 
 echo "Installing Mail-in-a-Box system management daemon..."
 
-# build-essential libssl-dev libffi-dev python3-dev: Required to pip install cryptography.
-apt_install python3-flask links duplicity libyaml-dev python3-dnspython python3-dateutil \
-	build-essential libssl-dev libffi-dev python3-dev python-pip
-hide_output pip3 install --upgrade rtyaml email_validator>=1.0.0 idna>=2.0.0 cryptography>=1.0.2 boto
+# Switching python 2 boto to package manager's, not pypi's.
+if [ -f /usr/local/lib/python2.7/dist-packages/boto/__init__.py ]; then hide_output pip uninstall -y boto; fi
 
 # duplicity uses python 2 so we need to use the python 2 package of boto
-hide_output pip install --upgrade boto
+# build-essential libssl-dev libffi-dev python3-dev: Required to pip install cryptography.
+apt_install python3-flask links duplicity python-boto libyaml-dev python3-dnspython python3-dateutil \
+	build-essential libssl-dev libffi-dev python3-dev python-pip
+hide_output pip3 install --upgrade rtyaml "email_validator>=1.0.0" "idna>=2.0.0" "cryptography>=1.0.2" boto
 
 # email_validator is repeated in setup/questions.sh
 
@@ -30,25 +31,18 @@ rm -f /etc/init.d/mailinabox
 ln -s $(pwd)/conf/management-initscript /etc/init.d/mailinabox
 hide_output update-rc.d mailinabox defaults
 
-# Perform a daily backup.
-cat > /etc/cron.daily/mailinabox-backup << EOF;
-#!/bin/bash
-# Mail-in-a-Box --- Do not edit / will be overwritten on update.
-# Perform a backup.
-$(pwd)/management/backup.py
-EOF
-chmod +x /etc/cron.daily/mailinabox-backup
+# Remove old files we no longer use.
+rm -f /etc/cron.daily/mailinabox-backup
+rm -f /etc/cron.daily/mailinabox-statuschecks
 
-# Perform daily status checks. Compare each day to the previous
-# for changes and mail the changes to the administrator.
-cat > /etc/cron.daily/mailinabox-statuschecks << EOF;
-#!/bin/bash
-# Mail-in-a-Box --- Do not edit / will be overwritten on update.
-# Run status checks.
-$(pwd)/management/status_checks.py --show-changes --smtp
-EOF
-chmod +x /etc/cron.daily/mailinabox-statuschecks
+# Perform nightly tasks at 3am in system time: take a backup, run
+# status checks and email the administrator any changes.
 
+cat > /etc/cron.d/mailinabox-nightly << EOF;
+# Mail-in-a-Box --- Do not edit / will be overwritten on update.
+# Run nightly tasks: backup, status checks.
+0 3 * * *	root	(cd `pwd` && management/daily_tasks.sh)
+EOF
 
 # Start it.
 restart_service mailinabox
