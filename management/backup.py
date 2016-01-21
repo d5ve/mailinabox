@@ -1,14 +1,12 @@
 #!/usr/bin/python3
 
 # This script performs a backup of all user data:
-# 1) System services are stopped while a copy of user data is made.
-# 2) An incremental encrypted backup is made using duplicity into the
-#    directory STORAGE_ROOT/backup/encrypted. The password used for
-#    encryption is stored in backup/secret_key.txt.
+# 1) System services are stopped.
+# 2) An incremental encrypted backup is made using duplicity.
 # 3) The stopped services are restarted.
-# 5) STORAGE_ROOT/backup/after-backup is executd if it exists.
+# 4) STORAGE_ROOT/backup/after-backup is executd if it exists.
 
-import os, os.path, shutil, glob, re, datetime
+import os, os.path, shutil, glob, re, datetime, sys
 import dateutil.parser, dateutil.relativedelta, dateutil.tz
 import rtyaml
 
@@ -65,8 +63,8 @@ def backup_status(env):
 		trap=True)
 	if code != 0:
 		# Command failed. This is likely due to an improperly configured remote
-		# destination for the backups.
-		return { }
+		# destination for the backups or the last backup job terminated unexpectedly.
+		raise Exception("Something is wrong with the backup: " + collection_status)
 	for line in collection_status.split('\n'):
 		if line.startswith(" full") or line.startswith(" inc"):
 			backup = parse_line(line)
@@ -217,12 +215,26 @@ def perform_backup(full_backup):
 	# will fail. Otherwise do a full backup when the size of
 	# the increments since the most recent full backup are
 	# large.
-	full_backup = full_backup or should_force_full(env)
+	try:
+		full_backup = full_backup or should_force_full(env)
+	except Exception as e:
+		# This was the first call to duplicity, and there might
+		# be an error already.
+		print(e)
+		sys.exit(1)
 
 	# Stop services.
-	shell('check_call', ["/usr/sbin/service", "php5-fpm", "stop"])
-	shell('check_call', ["/usr/sbin/service", "postfix", "stop"])
-	shell('check_call', ["/usr/sbin/service", "dovecot", "stop"])
+	def service_command(service, command, quit=None):
+		# Execute silently, but if there is an error then display the output & exit.
+		code, ret = shell('check_output', ["/usr/sbin/service", service, command], capture_stderr=True, trap=True)
+		if code != 0:
+			print(ret)
+			if quit:
+				sys.exit(code)
+
+	service_command("php5-fpm", "stop", quit=True)
+	service_command("postfix", "stop", quit=True)
+	service_command("dovecot", "stop", quit=True)
 
 	# Run a backup of STORAGE_ROOT (but excluding the backups themselves!).
 	# --allow-source-mismatch is needed in case the box's hostname is changed
@@ -231,6 +243,7 @@ def perform_backup(full_backup):
 		shell('check_call', [
 			"/usr/bin/duplicity",
 			"full" if full_backup else "incr",
+			"--verbosity", "warning", "--no-print-statistics",
 			"--archive-dir", backup_cache_dir,
 			"--exclude", backup_root,
 			"--volsize", "250",
@@ -242,9 +255,9 @@ def perform_backup(full_backup):
 			get_env(env))
 	finally:
 		# Start services again.
-		shell('check_call', ["/usr/sbin/service", "dovecot", "start"])
-		shell('check_call', ["/usr/sbin/service", "postfix", "start"])
-		shell('check_call', ["/usr/sbin/service", "php5-fpm", "start"])
+		service_command("dovecot", "start", quit=False)
+		service_command("postfix", "start", quit=False)
+		service_command("php5-fpm", "start", quit=False)
 
 	# Once the migrated backup is included in a new backup, it can be deleted.
 	if os.path.isdir(migrated_unencrypted_backup_dir):
@@ -256,6 +269,7 @@ def perform_backup(full_backup):
 		"/usr/bin/duplicity",
 		"remove-older-than",
 		"%dD" % config["min_age_in_days"],
+		"--verbosity", "error",
 		"--archive-dir", backup_cache_dir,
 		"--force",
 		config["target"]
@@ -270,6 +284,7 @@ def perform_backup(full_backup):
 	shell('check_call', [
 		"/usr/bin/duplicity",
 		"cleanup",
+		"--verbosity", "error",
 		"--archive-dir", backup_cache_dir,
 		"--force",
 		config["target"]

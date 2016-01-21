@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 #
 # Checks that the upstream DNS has been set correctly and that
-# SSL certificates have been signed, etc., and if not tells the user
+# TLS certificates have been signed, etc., and if not tells the user
 # what to do next.
 
 import sys, os, os.path, re, subprocess, datetime, multiprocessing.pool
@@ -9,6 +9,7 @@ import sys, os, os.path, re, subprocess, datetime, multiprocessing.pool
 import dns.reversename, dns.resolver
 import dateutil.parser, dateutil.tz
 import idna
+import psutil
 
 from dns_update import get_dns_zones, build_tlsa_record, get_custom_dns_config, get_secondary_dns, get_custom_dns_record
 from web_update import get_web_domains, get_domains_with_a_records
@@ -71,7 +72,6 @@ def run_services_checks(env, output, pool):
 		{ "name": "OpenDKIM", "port": 8891, "public": False, },
 		{ "name": "OpenDMARC", "port": 8893, "public": False, },
 		{ "name": "Memcached", "port": 11211, "public": False, },
-		{ "name": "Sieve (dovecot)", "port": 4190, "public": False, },
 		{ "name": "Mail-in-a-Box Management Daemon", "port": 10222, "public": False, },
 
 		{ "name": "SSH Login (ssh)", "port": get_ssh_port(), "public": True, },
@@ -80,6 +80,7 @@ def run_services_checks(env, output, pool):
 		{ "name": "Outgoing Mail (SMTP 587/postfix)", "port": 587, "public": True, },
 		#{ "name": "Postfix/master", "port": 10587, "public": True, },
 		{ "name": "IMAPS (dovecot)", "port": 993, "public": True, },
+		{ "name": "Mail Filters (Sieve/dovecot)", "port": 4190, "public": True, },
 		{ "name": "HTTP Web (nginx)", "port": 80, "public": True, },
 		{ "name": "HTTPS Web (nginx)", "port": 443, "public": True, },
 	]
@@ -166,6 +167,7 @@ def run_system_checks(rounded_values, env, output):
 	check_miab_version(env, output)
 	check_system_aliases(env, output)
 	check_free_disk_space(rounded_values, env, output)
+	check_free_memory(rounded_values, env, output)
 
 def check_ssh_password(env, output):
 	# Check that SSH login with password is disabled. The openssh-server
@@ -216,6 +218,20 @@ def check_free_disk_space(rounded_values, env, output):
 	else:
 		output.print_error(disk_msg)
 
+def check_free_memory(rounded_values, env, output):
+	# Check free memory.
+	percent_free = 100 - psutil.virtual_memory().percent
+	memory_msg = "System memory is %s%% free." % str(round(percent_free))
+	if percent_free >= 30:
+		if rounded_values: memory_msg = "System free memory is at least 30%."
+		output.print_ok(memory_msg)
+	elif percent_free >= 15:
+		if rounded_values: memory_msg = "System free memory is below 30%."
+		output.print_warning(memory_msg)
+	else:
+		if rounded_values: memory_msg = "System free memory is below 15%."
+		output.print_error(memory_msg)
+
 def run_network_checks(env, output):
 	# Also see setup/network-checks.sh.
 
@@ -262,22 +278,23 @@ def run_domain_checks(rounded_time, env, output, pool):
 	# Get the list of domains that we don't serve web for because of a custom CNAME/A record.
 	domains_with_a_records = get_domains_with_a_records(env)
 
-	ssl_certificates = get_ssl_certificates(env)
-
 	# Serial version:
 	#for domain in sort_domains(domains_to_check, env):
 	#	run_domain_checks_on_domain(domain, rounded_time, env, dns_domains, dns_zonefiles, mail_domains, web_domains)
 
 	# Parallelize the checks across a worker pool.
-	args = ((domain, rounded_time, env, dns_domains, dns_zonefiles, mail_domains, web_domains, domains_with_a_records, ssl_certificates)
+	args = ((domain, rounded_time, env, dns_domains, dns_zonefiles, mail_domains, web_domains, domains_with_a_records)
 		for domain in domains_to_check)
 	ret = pool.starmap(run_domain_checks_on_domain, args, chunksize=1)
 	ret = dict(ret) # (domain, output) => { domain: output }
 	for domain in sort_domains(ret, env):
 		ret[domain].playback(output)
 
-def run_domain_checks_on_domain(domain, rounded_time, env, dns_domains, dns_zonefiles, mail_domains, web_domains, domains_with_a_records, ssl_certificates):
+def run_domain_checks_on_domain(domain, rounded_time, env, dns_domains, dns_zonefiles, mail_domains, web_domains, domains_with_a_records):
 	output = BufferedOutput()
+
+	# we'd move this up, but this returns non-pickleable values
+	ssl_certificates = get_ssl_certificates(env)
 
 	# The domain is IDNA-encoded in the database, but for display use Unicode.
 	try:
@@ -584,15 +601,23 @@ def check_web_domain(domain, rounded_time, ssl_certificates, env, output):
 	# for PRIMARY_HOSTNAME, for which it is required for mail specifically. For it and
 	# other domains, it is required to access its website.
 	if domain != env['PRIMARY_HOSTNAME']:
-		ip = query_dns(domain, "A")
-		if ip == env['PUBLIC_IP']:
-			output.print_ok("Domain resolves to this box's IP address. [%s ↦ %s]" % (domain, env['PUBLIC_IP']))
-		else:
-			output.print_error("""This domain should resolve to your box's IP address (%s) if you would like the box to serve
-				webmail or a website on this domain. The domain currently resolves to %s in public DNS. It may take several hours for
-				public DNS to update after a change. This problem may result from other issues listed here.""" % (env['PUBLIC_IP'], ip))
+		ok_values = []
+		for (rtype, expected) in (("A", env['PUBLIC_IP']), ("AAAA", env.get('PUBLIC_IPV6'))):
+			if not expected: continue # IPv6 is not configured
+			value = query_dns(domain, rtype)
+			if value == expected:
+				ok_values.append(value)
+			else:
+				output.print_error("""This domain should resolve to your box's IP address (%s %s) if you would like the box to serve
+					webmail or a website on this domain. The domain currently resolves to %s in public DNS. It may take several hours for
+					public DNS to update after a change. This problem may result from other issues listed here.""" % (rtype, expected, value))
+				return
 
-	# We need a SSL certificate for PRIMARY_HOSTNAME because that's where the
+		# If both A and AAAA are correct...
+		output.print_ok("Domain resolves to this box's IP address. [%s ↦ %s]" % (domain, '; '.join(ok_values)))
+
+
+	# We need a TLS certificate for PRIMARY_HOSTNAME because that's where the
 	# user will log in with IMAP or webmail. Any other domain we serve a
 	# website for also needs a signed certificate.
 	check_ssl_cert(domain, rounded_time, ssl_certificates, env, output)
@@ -634,56 +659,39 @@ def query_dns(qname, rtype, nxdomain='[Not Set]', at=None):
 	return "; ".join(sorted(str(r).rstrip('.') for r in response))
 
 def check_ssl_cert(domain, rounded_time, ssl_certificates, env, output):
-	# Check that SSL certificate is signed.
+	# Check that TLS certificate is signed.
 
 	# Skip the check if the A record is not pointed here.
 	if query_dns(domain, "A", None) not in (env['PUBLIC_IP'], None): return
 
-	# Where is the SSL stored?
-	x = get_domain_ssl_files(domain, ssl_certificates, env, allow_missing_cert=True)
-
-	if x is None:
-		output.print_warning("""No SSL certificate is installed for this domain. Visitors to a website on
+	# Where is the certificate file stored?
+	tls_cert = get_domain_ssl_files(domain, ssl_certificates, env, allow_missing_cert=True)
+	if tls_cert is None:
+		output.print_warning("""No TLS (SSL) certificate is installed for this domain. Visitors to a website on
 			this domain will get a security warning. If you are not serving a website on this domain, you do
-			not need to take any action. Use the SSL Certificates page in the control panel to install a
-			SSL certificate.""")
+			not need to take any action. Use the TLS Certificates page in the control panel to install a
+			TLS certificate.""")
 		return
-
-	ssl_key, ssl_certificate, ssl_via = x
 
 	# Check that the certificate is good.
 
-	cert_status, cert_status_details = check_certificate(domain, ssl_certificate, ssl_key, rounded_time=rounded_time)
+	cert_status, cert_status_details = check_certificate(domain, tls_cert["certificate"], tls_cert["private-key"], rounded_time=rounded_time)
 
 	if cert_status == "OK":
 		# The certificate is ok. The details has expiry info.
-		output.print_ok("SSL certificate is signed & valid. %s %s" % (ssl_via if ssl_via else "", cert_status_details))
+		output.print_ok("TLS (SSL) certificate is signed & valid. " + cert_status_details)
 
 	elif cert_status == "SELF-SIGNED":
 		# Offer instructions for purchasing a signed certificate.
-
-		fingerprint = shell('check_output', [
-			"openssl",
-			"x509",
-			"-in", ssl_certificate,
-			"-noout",
-			"-fingerprint"
-			])
-		fingerprint = re.sub(".*Fingerprint=", "", fingerprint).strip()
-
 		if domain == env['PRIMARY_HOSTNAME']:
-			output.print_error("""The SSL certificate for this domain is currently self-signed. You will get a security
+			output.print_error("""The TLS (SSL) certificate for this domain is currently self-signed. You will get a security
 			warning when you check or send email and when visiting this domain in a web browser (for webmail or
-			static site hosting). Use the SSL Certificates page in the control panel to install a signed SSL certificate.
-			You may choose to leave the self-signed certificate in place and confirm the security exception, but check that
-			the certificate fingerprint matches the following:""")
-			output.print_line("")
-			output.print_line("   " + fingerprint, monospace=True)
+			static site hosting).""")
 		else:
-			output.print_error("""The SSL certificate for this domain is self-signed.""")
+			output.print_error("""The TLS (SSL) certificate for this domain is self-signed.""")
 
 	else:
-		output.print_error("The SSL certificate has a problem: " + cert_status)
+		output.print_error("The TLS (SSL) certificate has a problem: " + cert_status)
 		if cert_status_details:
 			output.print_line("")
 			output.print_line(cert_status_details)
@@ -743,23 +751,24 @@ def check_miab_version(env, output):
 	if config.get("privacy", True):
 		output.print_warning("Mail-in-a-Box version check disabled by privacy setting.")
 	else:
-		this_ver = what_version_is_this(env)
+		try:
+			this_ver = what_version_is_this(env)
+		except:
+			this_ver = "Unknown"
+
 		latest_ver = get_latest_miab_version()
+
 		if this_ver == latest_ver:
 			output.print_ok("Mail-in-a-Box is up to date. You are running version %s." % this_ver)
 		else:
 			output.print_error("A new version of Mail-in-a-Box is available. You are running version %s. The latest version is %s. For upgrade instructions, see https://mailinabox.email. "
 				% (this_ver, latest_ver))
 
-def run_and_output_changes(env, pool, send_via_email):
+def run_and_output_changes(env, pool):
 	import json
 	from difflib import SequenceMatcher
 
-	if not send_via_email:
-		out = ConsoleOutput()
-	else:
-		import io
-		out = FileOutput(io.StringIO(""), 70)
+	out = ConsoleOutput()
 
 	# Run status checks.
 	cur = BufferedOutput()
@@ -818,28 +827,6 @@ def run_and_output_changes(env, pool, send_via_email):
 				out.add_heading(category)
 				out.print_warning("This section was removed.")
 
-	if send_via_email:
-		# If there were changes, send off an email.
-		buf = out.buf.getvalue()
-		if len(buf) > 0:
-			# create MIME message
-			from email.message import Message
-			msg = Message()
-			msg['From'] = "\"%s\" <administrator@%s>" % (env['PRIMARY_HOSTNAME'], env['PRIMARY_HOSTNAME'])
-			msg['To'] = "administrator@%s" % env['PRIMARY_HOSTNAME']
-			msg['Subject'] = "[%s] Status Checks Change Notice" % env['PRIMARY_HOSTNAME']
-			msg.set_payload(buf, "UTF-8")
-
-			# send to administrator@
-			import smtplib
-			mailserver = smtplib.SMTP('localhost', 25)
-			mailserver.ehlo()
-			mailserver.sendmail(
-				"administrator@%s" % env['PRIMARY_HOSTNAME'], # MAIL FROM
-				"administrator@%s" % env['PRIMARY_HOSTNAME'], # RCPT TO
-				msg.as_string())
-			mailserver.quit()
-
 	# Store the current status checks output for next time.
 	os.makedirs(os.path.dirname(cache_fn), exist_ok=True)
 	with open(cache_fn, "w") as f:
@@ -870,7 +857,7 @@ class FileOutput:
 		words = re.split("(\s+)", message)
 		linelen = 0
 		for w in words:
-			if linelen + len(w) > self.width-1-len(first_line):
+			if self.width and (linelen + len(w) > self.width-1-len(first_line)):
 				print(file=self.buf)
 				print("   ", end="", file=self.buf)
 				linelen = 0
@@ -886,10 +873,22 @@ class FileOutput:
 class ConsoleOutput(FileOutput):
 	def __init__(self):
 		self.buf = sys.stdout
-		try:
-			self.width = int(shell('check_output', ['stty', 'size']).split()[1])
-		except:
-			self.width = 76
+		
+		# Do nice line-wrapping according to the size of the terminal.
+		# The 'stty' program queries standard input for terminal information.
+		if sys.stdin.isatty():
+			try:
+				self.width = int(shell('check_output', ['stty', 'size']).split()[1])
+			except:
+				self.width = 76
+
+		else:
+			# However if standard input is not a terminal, we would get
+			# "stty: standard input: Inappropriate ioctl for device". So
+			# we test with sys.stdin.isatty first, and if it is not a
+			# terminal don't do any line wrapping. When this script is
+			# run from cron, or if stdin has been redirected, this happens.
+			self.width = None
 
 class BufferedOutput:
 	# Record all of the instance method calls so we can play them back later.
@@ -917,7 +916,7 @@ if __name__ == "__main__":
 		run_checks(False, env, ConsoleOutput(), pool)
 
 	elif sys.argv[1] == "--show-changes":
-		run_and_output_changes(env, pool, sys.argv[-1] == "--smtp")
+		run_and_output_changes(env, pool)
 
 	elif sys.argv[1] == "--check-primary-hostname":
 		# See if the primary hostname appears resolvable and has a signed certificate.
@@ -925,10 +924,10 @@ if __name__ == "__main__":
 		if query_dns(domain, "A") != env['PUBLIC_IP']:
 			sys.exit(1)
 		ssl_certificates = get_ssl_certificates(env)
-		ssl_key, ssl_certificate, ssl_via = get_domain_ssl_files(domain, ssl_certificates, env)
-		if not os.path.exists(ssl_certificate):
+		tls_cert = get_domain_ssl_files(domain, ssl_certificates, env)
+		if not os.path.exists(tls_cert["certificate"]):
 			sys.exit(1)
-		cert_status, cert_status_details = check_certificate(domain, ssl_certificate, ssl_key, warn_if_expiring_soon=False)
+		cert_status, cert_status_details = check_certificate(domain, tls_cert["certificate"], tls_cert["private-key"], warn_if_expiring_soon=False)
 		if cert_status != "OK":
 			sys.exit(1)
 		sys.exit(0)
