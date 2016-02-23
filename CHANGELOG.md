@@ -6,26 +6,60 @@ In Development
 
 Mail:
 
+* Roundcube updated to version 1.1.4.
+* When there's a problem delivering an outgoing message, a new 'warning' bounce will come after 3 hours and the box will stop trying after 2 days (instead of 5).
+* On multi-homed machines, Postfix now binds to the right network interface when sending outbound mail so that SPF checks on the receiving end will pass.
+* Mail sent from addresses on subdomains of other domains hosted by this box would not be DKIM-signed and so would fail DMARC checks by recipients, since version v0.15.
+
+Control panel:
+
+* TLS certificate provisioning would crash if DNS propagation was in progress and a challenge failed; might have shown the wrong error when provisioning fails.
+* Backup times were displayed with the wrong time zone.
+* Thresholds for displaying messages when the system is running low on memory have been reduced from 30% to 20% for a warning and from 15% to 10% for an error.
+* Other minor fixes.
+
+System:
+
+* Backups to some AWS S3 regions broke in version 0.15 because we reverted the version of boto. That's now fixed.
+* On low-usage systems, don't hold backups for quite so long by taking a full backup more often.
+* Nightly status checks might fail on systems not configured with a default Unicode locale.
+* If domains need a TLS certificate and the user hasn't installed one yet using Let's Encrypt, the administrator would get a nightly email with weird interactive text asking them to agree to Let's Encrypt's ToS. Now just say that the provisioning can't be done automatically.
+* Reduce the number of background processes used by the management daemon to lower memory consumption
+
+Setup:
+
+* The first screen now warns users not to install on a machine used for other things.
+
+v0.16 (January 30, 2016)
+------------------------
+
+This update primarily adds automatic SSL (now "TLS") certificate provisioning from Let's Encrypt (https://letsencrypt.org/).
 * The Sieve port is now open so tools like the Thunderbird Sieve program can be used to edit mail filters.
 
 Control Panel:
 
-* The SSL (now "TLS") certificates page now supports provisioning free SSL certificates from Let's Encrypt.
+* The SSL certificates (now referred to as "TLS ccertificates") page now supports provisioning free certificates from Let's Encrypt.
 * Report free memory usage.
 * Fix a crash when the git directory is not checked out to a tag.
+* When IPv6 is enabled, check that all domains (besides the system hostname) resolve over IPv6.
+* When a domain doesn't resolve to the box, don't bother checking if the TLS certificate is valid.
+* Remove rounded border on the menu bar.
 
-System:
+Other:
 
+* The Sieve port is now open so tools like the Thunderbird Sieve extension can be used to edit mail filters.
+* .be domains now offer DNSSEC options supported by the TLD
 * The daily backup will now email the administrator if there is a problem.
-* Expiring TLS (SSL) certificates are now automatically renewed via Let's Encrypt.
-* File ownership for the installed Roundcube files is fixed.
+* Expiring TLS certificates are now automatically renewed via Let's Encrypt.
+* File ownership for installed Roundcube files is fixed.
+* Typos fixed.
 
 v0.15a (January 9, 2016)
 ------------------------
 
 Mail:
 
-* Sending mail through Exchange/ActiveSync (Z-Push) had been broken since v0.14. This is now fixed.
+* Sending mail through Exchange/ActiveSync (Z-Push) had been broken since v0.14 in some setups. This is now fixed.
 
 v0.15 (January 1, 2016)
 -----------------------

@@ -222,14 +222,14 @@ def check_free_memory(rounded_values, env, output):
 	# Check free memory.
 	percent_free = 100 - psutil.virtual_memory().percent
 	memory_msg = "System memory is %s%% free." % str(round(percent_free))
-	if percent_free >= 30:
-		if rounded_values: memory_msg = "System free memory is at least 30%."
+	if percent_free >= 20:
+		if rounded_values: memory_msg = "System free memory is at least 20%."
 		output.print_ok(memory_msg)
-	elif percent_free >= 15:
-		if rounded_values: memory_msg = "System free memory is below 30%."
+	elif percent_free >= 10:
+		if rounded_values: memory_msg = "System free memory is below 20%."
 		output.print_warning(memory_msg)
 	else:
-		if rounded_values: memory_msg = "System free memory is below 15%."
+		if rounded_values: memory_msg = "System free memory is below 10%."
 		output.print_error(memory_msg)
 
 def run_network_checks(env, output):
@@ -464,7 +464,7 @@ def check_dns_zone(domain, env, output, dns_zonefiles):
 			elif ip is None:
 				output.print_error("Secondary nameserver %s is not configured to resolve this domain." % ns)
 			else:
-				output.print_error("Secondary nameserver %s is not configured correctly. (It resolved this domain as %s. It should be %s.)" % (ns, ip, env['PUBLIC_IP']))
+				output.print_error("Secondary nameserver %s is not configured correctly. (It resolved this domain as %s. It should be %s.)" % (ns, ip, correct_ip))
 
 def check_dns_zone_suggestions(domain, env, output, dns_zonefiles, domains_with_a_records):
 	# Warn if a custom DNS record is preventing this or the automatic www redirect from
@@ -740,10 +740,10 @@ def what_version_is_this(env):
 	return tag
 
 def get_latest_miab_version():
-	# This pings https://mailinabox.email/bootstrap.sh and extracts the tag named in
+	# This pings https://mailinabox.email/setup.sh and extracts the tag named in
 	# the script to determine the current product version.
 	import urllib.request
-	return re.search(b'TAG=(.*)', urllib.request.urlopen("https://mailinabox.email/bootstrap.sh?ping=1").read()).group(1).decode("utf8")
+	return re.search(b'TAG=(.*)', urllib.request.urlopen("https://mailinabox.email/setup.sh?ping=1").read()).group(1).decode("utf8")
 
 def check_miab_version(env, output):
 	config = load_settings(env)
