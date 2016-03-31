@@ -5,7 +5,8 @@
 source setup/functions.sh # load our functions
 
 # Check system setup: Are we running as root on Ubuntu 14.04 on a
-# machine with enough memory? If not, this shows an error and exits.
+# machine with enough memory? Is /tmp mounted with exec.
+# If not, this shows an error and exits.
 source setup/preflight.sh
 
 # Ensure Python reads/writes files in UTF-8. If the machine
@@ -22,6 +23,9 @@ export LANGUAGE=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 export LANG=en_US.UTF-8
 export LC_TYPE=en_US.UTF-8
+
+# Fix so line drawing characters are shown correctly in Putty on Windows. See #744.
+export NCURSES_NO_UTF8_ACS=1
 
 # Recall the last settings used if we're running this a second time.
 if [ -f /etc/mailinabox.conf ]; then

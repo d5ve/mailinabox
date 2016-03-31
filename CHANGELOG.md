@@ -6,6 +6,29 @@ In Development
 
 Mail:
 
+* Fixed a long-standing issue with training the spam filter not working (because of a file permissions issue).
+
+Control panel:
+
+* Munin system monitoring graphs are now zoomable.
+* When a reboot is required (due to Ubuntu security updates automatically installed), a Reboot Box button now appears.
+
+Setup:
+
+* A swap file is now created if system memory is less than 2GB, 5GB of free disk space is available, and if no swap file yet exists.
+* Setup dialogs did not appear correctly when connecting to SSH using Putty on Windows.
+* We now install Roundcube from our own mirror because Sourceforge's downloads experience frequent intermittant unavailability.
+
+v0.17b (March 1, 2016)
+----------------------
+
+ownCloud moved their source code to a new location, breaking our installation script.
+
+v0.17 (February 25, 2016)
+-------------------------
+
+Mail:
+
 * Roundcube updated to version 1.1.4.
 * When there's a problem delivering an outgoing message, a new 'warning' bounce will come after 3 hours and the box will stop trying after 2 days (instead of 5).
 * On multi-homed machines, Postfix now binds to the right network interface when sending outbound mail so that SPF checks on the receiving end will pass.
@@ -24,7 +47,7 @@ System:
 * On low-usage systems, don't hold backups for quite so long by taking a full backup more often.
 * Nightly status checks might fail on systems not configured with a default Unicode locale.
 * If domains need a TLS certificate and the user hasn't installed one yet using Let's Encrypt, the administrator would get a nightly email with weird interactive text asking them to agree to Let's Encrypt's ToS. Now just say that the provisioning can't be done automatically.
-* Reduce the number of background processes used by the management daemon to lower memory consumption
+* Reduce the number of background processes used by the management daemon to lower memory consumption.
 
 Setup:
 
