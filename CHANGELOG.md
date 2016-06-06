@@ -1,12 +1,24 @@
 CHANGELOG
 =========
 
-In Development
---------------
+v0.18c (June 2, 2016)
+---------------------
+
+* Domain aliases (and misconfigured aliases/catch-alls with non-existent local targets) would accept mail and deliver it to new mailbox folders on disk even if the target address didn't correspond with an existing mail user, instead of rejecting the mail. This issue was introduced in v0.18.
+* The Munin Monitoring link in the control panel now opens a new window.
+* Added an undocumented before-backup script.
+
+v0.18b (May 16, 2016)
+---------------------
+
+* Fixed a Roundcube user accounts issue introduced in v0.18.
+
+v0.18 (May 15, 2016)
+--------------------
 
 ownCloud:
 
-* Update ownCloud to 8.2.3 
+* Updated to ownCloud to 8.2.3 
 
 Mail:
 
@@ -16,7 +28,7 @@ Mail:
 Control panel:
 
 * Munin system monitoring graphs are now zoomable.
-* When a reboot is required (due to Ubuntu security updates automatically installed), a Reboot Box button now appears.
+* When a reboot is required (due to Ubuntu security updates automatically installed), a Reboot Box button now appears on the System Status Checks page of the control panel.
 * It is now possible to add SRV and secondary MX records in the Custom DNS page.
 * Other minor fixes.
 
