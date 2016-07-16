@@ -34,8 +34,8 @@ apt-get purge -qq -y roundcube* #NODOC
 # Install Roundcube from source if it is not already present or if it is out of date.
 # Combine the Roundcube version number with the commit hash of vacation_sieve to track
 # whether we have the latest version.
-VERSION=1.1.5
-HASH=8A59D196EF0AA6D9C717B00699215135ABCB99CF
+VERSION=1.2.0
+HASH=2088985fb613b4e4e3373933ca44b26fce0489fb
 VACATION_SIEVE_VERSION=91ea6f52216390073d1f5b70b5f6bea0bfaee7e5
 PERSISTENT_LOGIN_VERSION=1e9d724476a370ce917a2fcd5b3217b0c306c24e
 HTML5_NOTIFIER_VERSION=4b370e3cd60dabd2f428a26f45b677ad1b7118d5
@@ -156,6 +156,12 @@ chown root.www-data $STORAGE_ROOT/mail
 chmod 775 $STORAGE_ROOT/mail
 chown root.www-data $STORAGE_ROOT/mail/users.sqlite 
 chmod 664 $STORAGE_ROOT/mail/users.sqlite 
+
+# Run Roundcube database migration script, if the database exists (it's created by
+# Roundcube on first use).
+if [ -f $STORAGE_ROOT/mail/roundcube/roundcube.sqlite ]; then
+	/usr/local/lib/roundcubemail/bin/updatedb.sh --dir /usr/local/lib/roundcubemail/SQL --package roundcube
+fi
 
 # Enable PHP modules.
 php5enmod mcrypt
