@@ -9,6 +9,21 @@ Mail:
 * Roundcube is updated to version 1.2.0.
 * SSLv3 and RC4 are now no longer supported in incoming and outgoing mail (SMTP port 25).
 
+Control panel:
+
+* The users and aliases APIs are now documented on their control panel pages.
+* The HSTS header was missing.
+* New status checks were added for the ufw firewall.
+
+DNS:
+
+* Add SRV records for CardDAV/CalDAV to facilitate autoconfiguration (e.g. in DavDroid, whose latest version didn't seem to work to configure with entering just a hostname).
+
+System:
+
+* fail2ban jails added for SMTP submission, Roundcube, ownCloud, the control panel, and munin.
+* Mail-in-a-Box can now be installed on the i686 architecture.
+
 v0.18c (June 2, 2016)
 ---------------------
 
