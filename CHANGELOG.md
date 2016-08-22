@@ -4,9 +4,30 @@ CHANGELOG
 In Development
 --------------
 
+ownCloud:
+
+* Updated to ownCloud to 8.2.7.
+
+v0.19b (August 20, 2016)
+------------------------
+
+This update corrects a security issue introduced in v0.18.
+
+A remote code execution vulnerability is corrected in how the munin system monitoring graphs are generated for the control panel. The vulnerability involves an administrative user visiting a carefully crafted URL.
+
+v0.19a (August 18, 2016)
+------------------------
+
+This update corrects a security issue in v0.19.
+
+* fail2ban won't start if Roundcube had not yet been used - new installations probably do not have fail2ban running.
+
+v0.19 (August 13, 2016)
+-----------------------
+
 Mail:
 
-* Roundcube is updated to version 1.2.0.
+* Roundcube is updated to version 1.2.1.
 * SSLv3 and RC4 are now no longer supported in incoming and outgoing mail (SMTP port 25).
 
 Control panel:
