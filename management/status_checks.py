@@ -11,7 +11,7 @@ import dateutil.parser, dateutil.tz
 import idna
 import psutil
 
-from dns_update import get_dns_zones, build_tlsa_record, get_custom_dns_config, get_secondary_dns, get_custom_dns_record
+from dns_update import get_dns_zones, build_tlsa_record, get_custom_dns_config, get_secondary_dns, get_custom_dns_records
 from web_update import get_web_domains, get_domains_with_a_records
 from ssl_certificates import get_ssl_certificates, get_domain_ssl_files, check_certificate
 from mailconfig import get_mail_domains, get_mail_aliases
@@ -169,6 +169,10 @@ def run_system_checks(rounded_values, env, output):
 	check_free_memory(rounded_values, env, output)
 
 def check_ufw(env, output):
+	if not os.path.isfile('/usr/sbin/ufw'):
+		output.print_warning("""The ufw program was not installed. If your system is able to run iptables, rerun the setup.""")
+		return
+
 	code, ufw = shell('check_output', ['ufw', 'status'], trap=True)
 
 	if code != 0:
@@ -389,7 +393,7 @@ def check_primary_hostname_dns(domain, env, output, dns_domains, dns_zonefiles):
 
 	# Check that PRIMARY_HOSTNAME resolves to PUBLIC_IP[V6] in public DNS.
 	ipv6 = query_dns(domain, "AAAA") if env.get("PUBLIC_IPV6") else None
-	if ip == env['PUBLIC_IP'] and ipv6 in (None, env['PUBLIC_IPV6']):
+	if ip == env['PUBLIC_IP'] and not (ipv6 and env['PUBLIC_IPV6'] and normalize_ip(ipv6) != normalize_ip(env['PUBLIC_IPV6'])):
 		output.print_ok("Domain resolves to box's IP address. [%s ↦ %s]" % (env['PRIMARY_HOSTNAME'], my_ips))
 	else:
 		output.print_error("""This domain must resolve to your box's IP address (%s) in public DNS but it currently resolves
@@ -455,7 +459,7 @@ def check_dns_zone(domain, env, output, dns_zonefiles):
 	# half working.)
 
 	custom_dns_records = list(get_custom_dns_config(env)) # generator => list so we can reuse it
-	correct_ip = get_custom_dns_record(custom_dns_records, domain, "A") or env['PUBLIC_IP']
+	correct_ip = "; ".join(sorted(get_custom_dns_records(custom_dns_records, domain, "A"))) or env['PUBLIC_IP']
 	custom_secondary_ns = get_secondary_dns(custom_dns_records, mode="NS")
 	secondary_ns = custom_secondary_ns or ["ns2." + env['PRIMARY_HOSTNAME']]
 
@@ -696,10 +700,11 @@ def query_dns(qname, rtype, nxdomain='[Not Set]', at=None):
 	# BEGIN HOTFIX
 	response_new = []
 	for r in response:
-	        if isinstance(r.to_text(), bytes):
-	                response_new.append(r.to_text().decode('utf-8'))
-	        else:
-	                response_new.append(r)
+		s = r.to_text()
+		if isinstance(s, bytes):
+			s = s.decode('utf-8')
+		response_new.append(s)
+	
 	response = response_new
 	# END HOTFIX
 
@@ -789,8 +794,13 @@ def what_version_is_this(env):
 def get_latest_miab_version():
 	# This pings https://mailinabox.email/setup.sh and extracts the tag named in
 	# the script to determine the current product version.
-	import urllib.request
-	return re.search(b'TAG=(.*)', urllib.request.urlopen("https://mailinabox.email/setup.sh?ping=1").read()).group(1).decode("utf8")
+    from urllib.request import urlopen, HTTPError, URLError
+    from socket import timeout
+
+    try:
+        return re.search(b'TAG=(.*)', urlopen("https://mailinabox.email/setup.sh?ping=1", timeout=5).read()).group(1).decode("utf8")
+    except (HTTPError, URLError, timeout):
+        return None
 
 def check_miab_version(env, output):
 	config = load_settings(env)
@@ -807,6 +817,8 @@ def check_miab_version(env, output):
 
 		if this_ver == latest_ver:
 			output.print_ok("Mail-in-a-Box is up to date. You are running version %s." % this_ver)
+		elif latest_ver is None:
+			output.print_error("Latest Mail-in-a-Box version could not be determined. You are running version %s." % this_ver)
 		else:
 			output.print_error("A new version of Mail-in-a-Box is available. You are running version %s. The latest version is %s. For upgrade instructions, see https://mailinabox.email. "
 				% (this_ver, latest_ver))
@@ -878,6 +890,11 @@ def run_and_output_changes(env, pool):
 	os.makedirs(os.path.dirname(cache_fn), exist_ok=True)
 	with open(cache_fn, "w") as f:
 		json.dump(cur.buf, f, indent=True)
+
+def normalize_ip(ip):
+	# Use ipaddress module to normalize the IPv6 notation and ensure we are matching IPv6 addresses written in different representations according to rfc5952.
+	import ipaddress
+	return str(ipaddress.ip_address(ip))
 
 class FileOutput:
 	def __init__(self, buf, width):

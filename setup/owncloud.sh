@@ -12,7 +12,7 @@ echo "Installing ownCloud (contacts/calendar)..."
 apt_install \
 	dbconfig-common \
 	php5-cli php5-sqlite php5-gd php5-imap php5-curl php-pear php-apc curl libapr1 libtool libcurl4-openssl-dev php-xml-parser \
-	php5 php5-dev php5-gd php5-fpm memcached php5-memcached unzip
+	php5 php5-dev php5-gd php5-fpm memcached php5-memcached
 
 apt-get purge -qq -y owncloud*
 
@@ -85,7 +85,7 @@ InstallOwncloud() {
 	fi
 }
 
-owncloud_ver=9.1.1
+owncloud_ver=9.1.2
 
 # Check if ownCloud dir exist, and check if version matches owncloud_ver (if either doesn't - install/upgrade)
 if [ ! -d /usr/local/lib/owncloud/ ] \
@@ -111,13 +111,13 @@ if [ ! -d /usr/local/lib/owncloud/ ] \
 
 	# We only need to check if we do upgrades when owncloud was previously installed
 	if [ -e /usr/local/lib/owncloud/version.php ]; then
-		if grep -q "8.1.[0-9]" /usr/local/lib/owncloud/version.php; then
+		if grep -q "8\.1\.[0-9]" /usr/local/lib/owncloud/version.php; then
 			echo "We are running 8.1.x, upgrading to 8.2.3 first"
 			InstallOwncloud 8.2.3 bfdf6166fbf6fc5438dc358600e7239d1c970613
 		fi
 
 		# If we are upgrading from 8.2.x we should go to 9.0 first. Owncloud doesn't support skipping minor versions
-		if grep -q "8.2.[0-9]" /usr/local/lib/owncloud/version.php; then
+		if grep -q "8\.2\.[0-9]" /usr/local/lib/owncloud/version.php; then
 			echo "We are running version 8.2.x, upgrading to 9.0.2 first"
 
 			# We need to disable memcached. The upgrade and install fails
@@ -152,7 +152,7 @@ EOF
 		fi
 	fi
 
-	InstallOwncloud $owncloud_ver 72ed9812432f01b3a459c4afc33f5c76b71eec09
+	InstallOwncloud $owncloud_ver ba9b1cdb681b8a3607d928cbe56f52e3888d9296
 fi
 
 # ### Configuring ownCloud

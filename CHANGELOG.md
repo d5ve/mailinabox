@@ -4,23 +4,54 @@ CHANGELOG
 In Development
 --------------
 
-ownCloud:
+* The CardDAV plugin has been added to Roundcube so that your ownCloud contacts are available in webmail.
+* Upgraded to ownCloud 9.1.2.
+* Upgraded to Roundcube 1.2.3.
+* The status checks page crashed when the mailinabox.email website was down - that's fixed.
+* Allow larger messages to be checked by SpamAssassin.
+* Made nightly re-provisioning of TLS certificates less noisy.
+* Fixed bugs in rsync backup method.
+* Added support for DSA and ED25519 SSHFP records.
+* Added support for custom SSHFP records.
 
-* Update ownCloud to version 9.1.1
+v0.21c (February 1, 2017)
+-------------------------
 
-Control panel:
+Installations and upgrades started failing about 10 days ago with the error "ImportError: No module named 'packaging'" after an upstream package (Python's setuptools) was updated by its maintainers. The updated package conflicted with Ubuntu 14.04's version of another package (Python's pip). This update upgrades both packages to remove the conflict.
 
-* Remove recommendations for Certificate Providers
-* Status checks failed if the system doesn't support iptables
-* Add support for SSHFP records when sshd listens on non-standard ports
+If you already encountered the error during installation or upgrade of Mail-in-a-Box, this update may not correct the problem on your existing system. See https://discourse.mailinabox.email/t/v0-21c-release-fixes-python-package-installation-issue/1881 for help if the problem persists after upgrading to this version of Mail-in-a-Box.
 
-System:
+v0.21b (December 4, 2016)
+-------------------------
 
-* Lower memory requirements to 512MB, display a warning if system memory is below 768MB.
+This update corrects a first-time installation issue introduced in v0.21 caused by the new Exchange/ActiveSync feature.
+
+v0.21 (November 30, 2016)
+-------------------------
+
+This version updates ownCloud, which may include security fixes, and makes some other smaller improvements.
 
 Mail:
 
-* Turn off header filters for forwarded email.
+* Header privacy filters were improperly running on the contents of forwarded email --- that's fixed.
+* We have another go at fixing a long-standing issue with training the spam filter (because of a file permissions issue).
+* Exchange/ActiveSync will now use your display name set in Roundcube in the From: line of outgoing email.
+
+ownCloud:
+
+* Updated ownCloud to version 9.1.1.
+
+Control panel:
+
+* Backups can now be made using rsync-over-ssh!
+* Status checks failed if the system doesn't support iptables or doesn't have ufw installed.
+* Added support for SSHFP records when sshd listens on non-standard ports.
+* Recommendations for TLS certificate providers were removed now that everyone mostly uses Let's Encrypt.
+
+System:
+
+* Ubuntu's "Upgrade to 16.04" notice is suppressed since you should not do that.
+* Lowered memory requirements to 512MB, display a warning if system memory is below 768MB.
 
 v0.20 (September 23, 2016)
 --------------------------

@@ -116,14 +116,16 @@ apt_get_quiet upgrade
 echo Installing system packages...
 apt_install python3 python3-dev python3-pip \
 	netcat-openbsd wget curl git sudo coreutils bc \
-	haveged pollinate \
+	haveged pollinate unzip \
 	unattended-upgrades cron ntp fail2ban
 
 # ### Suppress Upgrade Prompts
 # Since Mail-in-a-Box might jump straight to 18.04 LTS, there's no need
 # to be reminded about 16.04 on every login.
-tools/editconf.py /etc/update-manager/release-upgrades Prompt=never
-rm -f /var/lib/ubuntu-release-upgrader/release-upgrade-available
+if [ -f /etc/update-manager/release-upgrades ]; then
+	tools/editconf.py /etc/update-manager/release-upgrades Prompt=never
+	rm -f /var/lib/ubuntu-release-upgrader/release-upgrade-available
+fi
 
 # ### Set the system timezone
 #
@@ -213,6 +215,12 @@ dd if=/dev/random of=/dev/urandom bs=1 count=32 2> /dev/null
 pollinate  -q -r
 
 # Between these two, we really ought to be all set.
+
+# We need an ssh key to store backups via rsync, if it doesn't exist create one
+if [ ! -f /root/.ssh/id_rsa_miab ]; then
+	echo 'Creating SSH key for backup…'
+	ssh-keygen -t rsa -b 2048 -a 100 -f /root/.ssh/id_rsa_miab -N '' -q
+fi
 
 # ### Package maintenance
 #

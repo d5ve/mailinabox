@@ -4,7 +4,6 @@
 import os, os.path, re, shutil
 
 from utils import shell, safe_domain_name, sort_domains
-
 import idna
 
 # SELECTING SSL CERTIFICATES FOR USE IN WEB
@@ -214,6 +213,7 @@ def get_certificates_to_provision(env, show_extended_problems=True, force_domain
 
 	# Filter out domains that we can't provision a certificate for.
 	def can_provision_for_domain(domain):
+		from status_checks import normalize_ip
 		# Let's Encrypt doesn't yet support IDNA domains.
 		# We store domains in IDNA (ASCII). To see if this domain is IDNA,
 		# we'll see if its IDNA-decoded form is different.
@@ -252,7 +252,7 @@ def get_certificates_to_provision(env, show_extended_problems=True, force_domain
 				return s
 			# END HOTFIX
 
-			if len(response) != 1 or rdata__str__(response[0]) != value:
+			if len(response) != 1 or normalize_ip(rdata__str__(response[0])) != normalize_ip(value):
 				problems[domain] = "Domain control validation cannot be performed for this domain because DNS points the domain to another machine (%s %s)." % (rtype, ", ".join(rdata__str__(r) for r in response))
 				return False
 
@@ -411,9 +411,11 @@ def provision_certificates(env, agree_to_tos_url=None, logger=None, show_extende
 
 def provision_certificates_cmdline():
 	import sys
-	from utils import load_environment, exclusive_process
+	from exclusiveprocess import Lock
 
-	exclusive_process("update_tls_certificates")
+	from utils import load_environment
+
+	Lock(die=True).forever()
 	env = load_environment()
 
 	verbose = False
@@ -426,7 +428,7 @@ def provision_certificates_cmdline():
 	if args and args[0] == "-v":
 		verbose = True
 		args.pop(0)
-	if args and args[0] == "q":
+	if args and args[0] == "-q":
 		show_extended_problems = False
 		args.pop(0)
 	if args and args[0] == "--headless":
